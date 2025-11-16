@@ -36,7 +36,7 @@ unsigned int indices[] = {
     2, 3, 0
 };
 
-int main(int argc, char* argv[])
+int main1(int argc, char* argv[])
 {
     GLFWwindow* window;
 
