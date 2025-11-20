@@ -69,22 +69,20 @@ Image noiseReductGauss(Image img){
     unsigned char* smoothBuffer = new unsigned char[img.width * img.height];
 
     for(int i = 0; i < img.width * img.height; i++){
-        int up = -2, down = 2, left = -2, right = 2, sum = 0; 
-        for (int j = -2; j <= 2; j++){
-            for (int k = -2; k <= 2; k++){
-                try{
-                    getPixelSafe((i % img.width) + k, (i / img.width) + j, img);
-                    sum += mat[j + 2][k + 2];
-                } catch (const std::out_of_range& e) {
-                    if (k < 0) left++;
-                    if (k > 0) right--;
-                    if (j < 0) up++;
-                    if (j > 0) down--;
-                }
+        int left = -2, right = 2, up = -2, down = 2;
+        // Adjust kernel for edge pixels
+        if (i % img.width < 2) left = -(i % img.width);
+        if (i % img.width > img.width - 3) right = img.width - 1 - (i % img.width);
+        if (i / img.width < 2) up = -(i / img.width);
+        if (i / img.width > img.height - 3) down = img.height - 1 - (i / img.width);
+        int sum = 0;
+        for (int j = up; j <= down; j++){
+            for (int k = left; k <= right; k++){
+                sum += mat[j + 2][k + 2];
             }
         }
 
-        int pixelValue = 0; 
+        int pixelValue = 0;
         for (int j = up; j <= down; j++){
             for (int k = left; k <= right; k++){
                 pixelValue += (*getPixelSafe((i % img.width) + k, (i / img.width) + j, img)) * mat[j + 2][k + 2] / sum;
