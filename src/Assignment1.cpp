@@ -11,6 +11,12 @@ struct Image {
     int channels;
 };
 
+unsigned char* getPixelSafe(int x, int y, Image img){ // Only for single channel images
+    if (x < 0 || x >= img.width) throw std::out_of_range("x coordinate is out of image bounds");
+    if (y < 0 || y >= img.height) throw std::out_of_range("y coordinate is out of image bounds");
+    return &img.buffer[y * img.width + x];
+}
+
 Image grayScaleImage(Image img){
 
     if (img.buffer == nullptr) {
