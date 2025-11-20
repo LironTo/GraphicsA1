@@ -4,43 +4,116 @@
 
 #include <iostream>
 
+struct Image {
+    unsigned char* buffer;
+    int width;
+    int height;
+    int channels;
+};
 
-unsigned char* grayScaleImage(unsigned char * buffer, int comps, int width, int height){
+Image grayScaleImage(Image img){
 
-    if (buffer == nullptr) {
+    if (img.buffer == nullptr) {
         std::cerr << "Failed to load image " << std::endl;
-        return nullptr;
+        return {nullptr, 0, 0, 0};
     }
 
     float redMultiplier = 0.2989; // NTSC/PAL Standard
     float greenMultiplier = 0.587;
     float blueMultiplier = 0.114;
 
-    unsigned char* grayBuffer = new unsigned char[width * height];
-    for(int i = 0; i < width * height; i++){
-        glm::vec3 colors = glm::vec3(buffer[i * comps], buffer[i * comps + 1], buffer[i * comps + 2]);
+    Image grayImg;
+    grayImg.width = img.width;
+    grayImg.height = img.height;
+    grayImg.channels = 1;
+
+    unsigned char* grayBuffer = new unsigned char[img.width * img.height];
+    for(int i = 0; i < img.width * img.height; i++){
+        glm::vec3 colors = glm::vec3(img.buffer[i * img.channels], 
+                                    img.buffer[i * img.channels + 1], 
+                                    img.buffer[i * img.channels + 2]);
         grayBuffer[i] = redMultiplier * colors.r + greenMultiplier * colors.g + blueMultiplier * colors.b;
     }
 
-    return grayBuffer;
+    grayImg.buffer = grayBuffer;
+
+    return grayImg;
 }
 
+Image noiseReductGauss(Image img){
+    
+    if (img.buffer == nullptr) {
+        std::cerr << "Failed to load image " << std::endl;
+        return {nullptr, 0, 0, 0};
+    }
+
+    float mat[5][5] = {
+        {2,  4,  5,  4, 2},
+        {4,  9, 12,  9, 4},
+        {5, 12, 15, 12, 5},
+        {4,  9, 12,  9, 4},
+        {2,  4,  5,  4, 2}
+    };
+
+    unsigned char* smoothBuffer = new unsigned char[img.width * img.height];
+
+    for(int i = 0; i < img.width * img.height; i++){
+        int up = -2, down = 2, left = -2, right = 2, sum = 0; 
+        for (int j = -2; j <= 2; j++){
+            for (int k = -2; k <= 2; k++){
+                if (true){} // TO DO
+            }
+        }
+    }
+    
+
+    
+
+    return nullptr;
+}
+
+Image cannyImage(Image img){
+    
+    if (img.buffer == nullptr) {
+        std::cerr << "Failed to load image " << std::endl;
+        return {nullptr, 0, 0, 0};
+    }
+
+    Image grayImg = grayScaleImage(img);
+
+    if (grayImg.buffer == nullptr) {
+        std::cerr << "Failed to convert to grayscale " << std::endl;
+        return {nullptr, 0, 0, 0};
+    }
+
+    Image smoothImg = noiseReductGauss(grayImg);
+
+
+    return nullptr;
+}
 
 int main(void)
 {
     std::string filepath = "res/textures/Lenna.png";
-    int width, height, comps;
+    Image img;
     int req_comps = 4;
+    unsigned char *buffer = stbi_load(filepath.c_str(), &img.width, &img.height, &img.channels, req_comps);
+    if (buffer == nullptr) {
+        std::cerr << "Failed to load image " << filepath << std::endl;
+        return -1;
+    }
+    img.buffer = buffer;
 
-    unsigned char *buffer = stbi_load(filepath.c_str(), &width, &height, &comps, req_comps);
+    Image grayImg = grayScaleImage(img);
+    int grayResult = stbi_write_png("res/textures/Lenna_gray.png", grayImg.width, grayImg.height, 1, grayImg.buffer, grayImg.width);
+    std::cout << "GrayScale creation "<< (grayResult ? "Succeed!" : "Failed :()") << std::endl;
 
-    unsigned char* grayBuffer = grayScaleImage(buffer, req_comps, width, height);
-    int grayResult = stbi_write_png("res/textures/Lenna_gray.png", width, height, 1, grayBuffer, width);
-    std::cout << "Gray "<< (grayResult ? "Success!" : "Failed") << std::endl;
+    Image cannyImg = cannyImage(grayImg);
+    int cannyResult = stbi_write_png("res/textures/Lenna_canny.png", cannyImg.width, cannyImg.height, 1, cannyImg.buffer, cannyImg.width);
+    std::cout << "Canny creation "<< (cannyResult ? "Succeed!" : "Failed :(") << std::endl;
 
-
-
-    stbi_image_free(buffer);
-    stbi_image_free(grayBuffer);
+    stbi_image_free(img.buffer);
+    stbi_image_free(grayImg.buffer);
+    stbi_image_free(cannyImg.buffer);
     return 0;
 }
