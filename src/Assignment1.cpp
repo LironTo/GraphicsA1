@@ -61,21 +61,41 @@ Image noiseReductGauss(Image img){
         {2,  4,  5,  4, 2}
     };
 
+    Image smoothImg;
+    smoothImg.width = img.width;
+    smoothImg.height = img.height;
+    smoothImg.channels = 1;
+
     unsigned char* smoothBuffer = new unsigned char[img.width * img.height];
 
     for(int i = 0; i < img.width * img.height; i++){
         int up = -2, down = 2, left = -2, right = 2, sum = 0; 
         for (int j = -2; j <= 2; j++){
             for (int k = -2; k <= 2; k++){
-                if (true){} // TO DO
+                try{
+                    getPixelSafe((i % img.width) + k, (i / img.width) + j, img);
+                    sum += mat[j + 2][k + 2];
+                } catch (const std::out_of_range& e) {
+                    if (k < 0) left++;
+                    if (k > 0) right--;
+                    if (j < 0) up++;
+                    if (j > 0) down--;
+                }
             }
         }
+
+        int pixelValue = 0; 
+        for (int j = up; j <= down; j++){
+            for (int k = left; k <= right; k++){
+                pixelValue += (*getPixelSafe((i % img.width) + k, (i / img.width) + j, img)) * mat[j + 2][k + 2] / sum;
+            }
+        }
+        smoothBuffer[i] = pixelValue;
     }
     
+    smoothImg.buffer = smoothBuffer;
 
-    
-
-    return nullptr;
+    return smoothImg;
 }
 
 Image cannyImage(Image img){
@@ -93,9 +113,9 @@ Image cannyImage(Image img){
     }
 
     Image smoothImg = noiseReductGauss(grayImg);
+    stbi_image_free(grayImg.buffer);
 
-
-    return nullptr;
+    return smoothImg;
 }
 
 int main(void)
@@ -114,7 +134,7 @@ int main(void)
     int grayResult = stbi_write_png("res/textures/Lenna_gray.png", grayImg.width, grayImg.height, 1, grayImg.buffer, grayImg.width);
     std::cout << "GrayScale creation "<< (grayResult ? "Succeed!" : "Failed :()") << std::endl;
 
-    Image cannyImg = cannyImage(grayImg);
+    Image cannyImg = cannyImage(img);
     int cannyResult = stbi_write_png("res/textures/Lenna_canny.png", cannyImg.width, cannyImg.height, 1, cannyImg.buffer, cannyImg.width);
     std::cout << "Canny creation "<< (cannyResult ? "Succeed!" : "Failed :(") << std::endl;
 
