@@ -186,7 +186,19 @@ Image gradientCalc(Image img){
         gradientBuffer[i] = static_cast<unsigned char>(magnitude);
     }
 
-    gradientImg.buffer = gradientBuffer;
+    float maxMagnitude = 0.0f;
+    for (int i = 0; i < img.width * img.height; i++) {
+        if (gradientBuffer[i] > maxMagnitude) {
+            maxMagnitude = gradientBuffer[i];
+        }
+    }
+
+    unsigned char* fixedBuffer = new unsigned char[img.width * img.height];
+    for (int i = 0; i < img.width * img.height; i++) {
+        fixedBuffer[i] = static_cast<unsigned char>((gradientBuffer[i] / maxMagnitude) * 255);
+    }
+
+    gradientImg.buffer = fixedBuffer;
 
     return gradientImg;
 }
