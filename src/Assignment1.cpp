@@ -3,6 +3,8 @@
 #include <glm/glm.hpp>
 
 #include <iostream>
+#include <cmath>
+#include <algorithm>
 
 struct Image {
     unsigned char* buffer;
@@ -11,11 +13,14 @@ struct Image {
     int channels;
 };
 
+unsigned char* angleBuffer; // Global buffer to store angles
+
 //halftone macros
 #define HALFTONE_SIZE_MULTIPLYER 2
 #define HALFTONE_VALUE_RANGE_WIDTH 51
 #define BLACK 0
 #define WHITE 255
+#define M_PI 3.14159265358979323846
 
 #define halftonePlacementTopLeft(x, y, width) (HALFTONE_SIZE_MULTIPLYER * x + HALFTONE_SIZE_MULTIPLYER * y * width)
 #define halftonePlacementTopRight(x, y, width) (HALFTONE_SIZE_MULTIPLYER* x + HALFTONE_SIZE_MULTIPLYER * y * width + 1)
@@ -121,6 +126,206 @@ Image noiseReductGauss(Image img){
     return smoothImg;
 }
 
+
+
+Image gradientCalc(Image img){
+    if (img.buffer == nullptr) {
+        std::cerr << "Failed to load image " << std::endl;
+        return {nullptr, 0, 0, 0};
+    }
+
+    angleBuffer = new unsigned char[img.width * img.height];
+    Image gradientImg;
+    gradientImg.width = img.width;
+    gradientImg.height = img.height;
+    gradientImg.channels = 1;
+
+    unsigned char* gradientBuffer = new unsigned char[img.width * img.height];
+
+    // Sobel kernels as 2D arrays
+    int sobelX[3][3] = {
+        {-1, 0, 1},
+        {-2, 0, 2},
+        {-1, 0, 1}
+    };
+
+    int sobelY[3][3] = {
+        {-1, -2, -1},
+        { 0,  0,  0},
+        { 1,  2,  1}
+    };
+
+    for(int i = 0; i < img.width * img.height; i++){
+        int x = i % img.width;
+        int y = i / img.width;
+        
+        float gradientX = 0.0f;
+        float gradientY = 0.0f;
+
+        // Apply Sobel kernels to 3x3 neighborhood
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int nx = x + dx;
+                int ny = y + dy;
+                
+                // Check bounds
+                if (nx >= 0 && nx < img.width && ny >= 0 && ny < img.height) {
+                    unsigned char pixel = *getPixelSafe(nx, ny, img);
+                    gradientX += pixel * sobelX[dy + 1][dx + 1];
+                    gradientY += pixel * sobelY[dy + 1][dx + 1];
+                }
+            }
+        }
+
+        float magnitude = std::sqrt(gradientX * gradientX + gradientY * gradientY);
+        float angle = std::atan2(gradientY, gradientX);
+        if (angle < 0) {
+            angle += M_PI; // Normalize angle to [0, π]
+        }
+        angleBuffer[i] = static_cast<unsigned char>(angle);
+        gradientBuffer[i] = static_cast<unsigned char>(magnitude);
+    }
+
+    gradientImg.buffer = gradientBuffer;
+
+    return gradientImg;
+}
+
+Image nonMaxSuppression(Image img){ 
+    if (img.buffer == nullptr) {
+        std::cerr << "Failed to load image " << std::endl;
+        return {nullptr, 0, 0, 0};
+    }
+
+    Image nmsImg;
+    nmsImg.width = img.width;
+    nmsImg.height = img.height;
+    nmsImg.channels = 1;
+    unsigned char* nmsBuffer = new unsigned char[img.width * img.height];
+
+    for(int i = 0; i < img.width * img.height; i++){
+        if (i % img.width == 0 || i % img.width == img.width -1 || i / img.width == 0 || i / img.width == img.height -1){
+            nmsBuffer[i] = BLACK; // Set border pixels to 0
+            continue;
+        }
+
+        float angle = angleBuffer[i];
+        unsigned char currentMagnitude = img.buffer[i];
+        if(angle < 0.3927){ // 0 degrees
+            if(currentMagnitude >= img.buffer[i - 1] && currentMagnitude >= img.buffer[i + 1]){
+                nmsBuffer[i] = currentMagnitude;
+            } else {
+                nmsBuffer[i] = BLACK;
+            }
+        } else if(angle < 1.1781){ // 45 degrees
+            if(currentMagnitude >= img.buffer[i - img.width + 1] && currentMagnitude >= img.buffer[i + img.width - 1]){
+                nmsBuffer[i] = currentMagnitude;
+            } else {
+                nmsBuffer[i] = BLACK;
+            }
+        } else if(angle < 1.9635){ // 90 degrees
+            if(currentMagnitude >= img.buffer[i - img.width] && currentMagnitude >= img.buffer[i + img.width]){
+                nmsBuffer[i] = currentMagnitude;
+            } else {
+                nmsBuffer[i] = BLACK;
+            }
+        } else { // 135 degrees
+            if(currentMagnitude >= img.buffer[i - img.width - 1] && currentMagnitude >= img.buffer[i + img.width + 1]){
+                nmsBuffer[i] = currentMagnitude;
+            } else {
+                nmsBuffer[i] = BLACK;
+            }
+        }
+    }
+
+    nmsImg.buffer = nmsBuffer;
+    return nmsImg;
+}
+
+Image doubleThreshold(Image img){
+    if (img.buffer == nullptr) {
+        std::cerr << "Failed to load image" << std::endl;
+        return {nullptr, 0, 0, 0};
+    }
+
+    Image dtImg;
+    dtImg.width = img.width;
+    dtImg.height = img.height;
+    dtImg.channels = 1;
+
+    unsigned char* dtBuffer = new unsigned char[img.width * img.height];
+
+    float lowThreshold = 50.0f;
+    float highThreshold = 150.0f;
+
+    // Classify pixels into strong (255), weak (127), or non-edges (0)
+    for (int i = 0; i < img.width * img.height; ++i) {
+        float magnitude = static_cast<float>(img.buffer[i]);
+        if (magnitude >= highThreshold) {
+            dtBuffer[i] = 255;  // Strong edge
+        } else if (magnitude >= lowThreshold) {
+            dtBuffer[i] = 127;  // Weak edge
+        } else {
+            dtBuffer[i] = 0;    // Non-edge
+        }
+    }
+
+    dtImg.buffer = dtBuffer;
+    return dtImg;
+}
+
+Image Hysteresis(Image img){
+    if (img.buffer == nullptr) {
+        std::cerr << "Failed to load image" << std::endl;
+        return {nullptr, 0, 0, 0};
+    }
+
+    Image hystImg;
+    hystImg.width = img.width;
+    hystImg.height = img.height;
+    hystImg.channels = 1;
+
+    unsigned char* hystBuffer = new unsigned char[img.width * img.height];
+
+    // Copy input to output
+    for (int i = 0; i < img.width * img.height; ++i) {
+        hystBuffer[i] = img.buffer[i];
+    }
+
+    // Hysteresis edge tracking: iteratively propagate strong edges through weak edges
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (int y = 1; y < img.height - 1; ++y) {
+            for (int x = 1; x < img.width - 1; ++x) {
+                int idx = y * img.width + x;
+                if (hystBuffer[idx] == 127) {  // Weak edge
+                    // Check 8-neighborhood for strong edges
+                    for (int dy = -1; dy <= 1; ++dy) {
+                        for (int dx = -1; dx <= 1; ++dx) {
+                            int nidx = (y + dy) * img.width + (x + dx);
+                            if (hystBuffer[nidx] == WHITE) {  // Found strong edge
+                                hystBuffer[idx] = WHITE;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Convert remaining weak edges to non-edges
+    for (int i = 0; i < img.width * img.height; ++i) {
+        if (hystBuffer[i] == 127) {
+            hystBuffer[i] = BLACK;
+        }
+    }
+
+    hystImg.buffer = hystBuffer;
+    return hystImg;
+}
+
 Image cannyImage(Image img){
     
     if (img.buffer == nullptr) {
@@ -130,6 +335,8 @@ Image cannyImage(Image img){
 
     Image grayImg = grayScaleImage(img);
 
+    int result = stbi_write_png("res/textures/Lenna_1.png", grayImg.width, grayImg.height, 1, grayImg.buffer, grayImg.width);
+
     if (grayImg.buffer == nullptr) {
         std::cerr << "Failed to convert to grayscale " << std::endl;
         return {nullptr, 0, 0, 0};
@@ -137,8 +344,24 @@ Image cannyImage(Image img){
 
     Image smoothImg = noiseReductGauss(grayImg);
     stbi_image_free(grayImg.buffer);
+    result = stbi_write_png("res/textures/Lenna_2.png", smoothImg.width, smoothImg.height, 1, smoothImg.buffer, smoothImg.width);
 
-    return smoothImg;
+    Image gradientImg = gradientCalc(smoothImg);
+    stbi_image_free(smoothImg.buffer);
+    result = stbi_write_png("res/textures/Lenna_3.png", gradientImg.width, gradientImg.height, 1, gradientImg.buffer, gradientImg.width);
+
+    Image nmsImg = nonMaxSuppression(gradientImg);
+    stbi_image_free(gradientImg.buffer);
+    result = stbi_write_png("res/textures/Lenna_4.png", nmsImg.width, nmsImg.height, 1, nmsImg.buffer, nmsImg.width);
+
+    Image dtImg = doubleThreshold(nmsImg);
+    stbi_image_free(nmsImg.buffer);
+    result = stbi_write_png("res/textures/Lenna_5.png", dtImg.width, dtImg.height, 1, dtImg.buffer, dtImg.width);
+
+    Image hystImg = Hysteresis(dtImg);
+    stbi_image_free(dtImg.buffer);
+
+    return hystImg;
 }
 
 /**
