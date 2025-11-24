@@ -5,7 +5,7 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
-
+#include <fstream>
 struct Image {
     unsigned char* buffer;
     int width;
@@ -39,7 +39,48 @@ unsigned char* angleBuffer; // Global buffer to store angles
 #define indexBottomRight(x, y, width) (x + 1 + (y + 1) * width)
 #define FS_VALUE_RANGE_WIDTH 16
 
+//debugging Macros
+#define getValue(buffer, i, j, width, isBlackAndWhite) (isBlackAndWhite ? (buffer[i * width + j] / 255) : (buffer[(i * width + j)] - buffer[(i * width + j)] % FS_VALUE_RANGE_WIDTH)/ FS_VALUE_RANGE_WIDTH)
+/*
+*takes a string of a path of a single channel image and saves a text file named after the that iamge, the values of the pixels are writen with commas between them.
+* @param filepath The path to the input image file.
+* @param width Pointer to store the width of the image.
+* @param height Pointer to store the height of the image.
+* @param isBlackAndWhite Boolean indicating if the image is black and white or 15 grayscale
+*/
+unsigned char* debugFileTextFromImage(std::string filepath, int width, int height, bool isBlackAndWhite){
+    unsigned char * buffer = stbi_load(filepath.c_str(), &width, &height, nullptr, 1);
+    if (buffer == nullptr) {
+        std::cerr << "Failed to load image: " << filepath << std::endl;
+        return nullptr;
+    }
 
+    size_t lastDot = filepath.find_last_of('.');
+    if (lastDot != std::string::npos && lastDot > 0) {
+        // Extract the substring from the beginning up to the dot
+        filepath = filepath.substr(0, lastDot);
+    }
+
+    std::string outputFilepath = filepath + ".txt";
+    std::ofstream outFile(outputFilepath);
+    if (!outFile) {
+        std::cerr << "Failed to open output file: " << outputFilepath << std::endl;
+        stbi_image_free(buffer);
+        return nullptr;
+    }
+    for(int i = 0; i < (height); i++){
+        for(int j = 0; j < (width); j++){
+            outFile << static_cast<int>(getValue(buffer, i, j, width, isBlackAndWhite));
+            if (j < (width) - 1) {
+                outFile << ", ";
+            }
+        }
+        outFile << "\n";
+    }
+    outFile.close();
+    stbi_image_free(buffer);
+    return buffer;
+}
 
 unsigned char* getPixelSafe(int x, int y, Image img){ // Only for single channel images
     if (x < 0 || x >= img.width) throw std::out_of_range("x coordinate is out of image bounds");
@@ -267,8 +308,8 @@ Image doubleThreshold(Image img){
 
     unsigned char* dtBuffer = new unsigned char[img.width * img.height];
 
-    float lowThreshold = 50.0f;
-    float highThreshold = 150.0f;
+    float lowThreshold = 70.0f;
+    float highThreshold = 110.0f;
 
     // Classify pixels into strong (255), weak (127), or non-edges (0)
     for (int i = 0; i < img.width * img.height; ++i) {
@@ -347,7 +388,7 @@ Image cannyImage(Image img){
 
     Image grayImg = grayScaleImage(img);
 
-    int result = stbi_write_png("res/textures/Lenna_1.png", grayImg.width, grayImg.height, 1, grayImg.buffer, grayImg.width);
+    //int result = stbi_write_png("res/textures/Lenna_1.png", grayImg.width, grayImg.height, 1, grayImg.buffer, grayImg.width);
 
     if (grayImg.buffer == nullptr) {
         std::cerr << "Failed to convert to grayscale " << std::endl;
@@ -356,19 +397,19 @@ Image cannyImage(Image img){
 
     Image smoothImg = noiseReductGauss(grayImg);
     stbi_image_free(grayImg.buffer);
-    result = stbi_write_png("res/textures/Lenna_2.png", smoothImg.width, smoothImg.height, 1, smoothImg.buffer, smoothImg.width);
+    //result = stbi_write_png("res/textures/Lenna_2.png", smoothImg.width, smoothImg.height, 1, smoothImg.buffer, smoothImg.width);
 
     Image gradientImg = gradientCalc(smoothImg);
     stbi_image_free(smoothImg.buffer);
-    result = stbi_write_png("res/textures/Lenna_3.png", gradientImg.width, gradientImg.height, 1, gradientImg.buffer, gradientImg.width);
+    //result = stbi_write_png("res/textures/Lenna_3.png", gradientImg.width, gradientImg.height, 1, gradientImg.buffer, gradientImg.width);
 
     Image nmsImg = nonMaxSuppression(gradientImg);
     stbi_image_free(gradientImg.buffer);
-    result = stbi_write_png("res/textures/Lenna_4.png", nmsImg.width, nmsImg.height, 1, nmsImg.buffer, nmsImg.width);
+    //result = stbi_write_png("res/textures/Lenna_4.png", nmsImg.width, nmsImg.height, 1, nmsImg.buffer, nmsImg.width);
 
     Image dtImg = doubleThreshold(nmsImg);
     stbi_image_free(nmsImg.buffer);
-    result = stbi_write_png("res/textures/Lenna_5.png", dtImg.width, dtImg.height, 1, dtImg.buffer, dtImg.width);
+    //result = stbi_write_png("res/textures/Lenna_5.png", dtImg.width, dtImg.height, 1, dtImg.buffer, dtImg.width);
 
     Image hystImg = Hysteresis(dtImg);
     stbi_image_free(dtImg.buffer);
@@ -413,8 +454,8 @@ unsigned char* halftoneImage(std::string filepath, int req_comps, int *width, in
             downLeftPlace = halftonePlacementDownLeft(j, i, resWidth);
 
             switch (valueRange)
-            {//TODO: uses marcos to calculate the position in the new buffer
-            case 0: // 
+            {
+            case 0:
                 halfBuffer[topLeftPlace] = BLACK;
                 halfBuffer[topRightPlace] = BLACK;
                 halfBuffer[downLeftPlace] = BLACK;
@@ -528,16 +569,19 @@ int main(void)
     img.buffer = buffer;
 
     Image grayImg = grayScaleImage(img);
-    int grayResult = stbi_write_png("res/textures/Lenna_gray.png", grayImg.width, grayImg.height, 1, grayImg.buffer, grayImg.width);
+    int grayResult = stbi_write_png("res/textures/Grayscale.png", grayImg.width, grayImg.height, 1, grayImg.buffer, grayImg.width);
+    debugFileTextFromImage("res/textures/Grayscale.png", grayImg.width, grayImg.height, false);
     std::cout << "GrayScale creation "<< (grayResult ? "Succeed!" : "Failed :()") << std::endl;
 
+
     Image cannyImg = cannyImage(img);
-    int cannyResult = stbi_write_png("res/textures/Lenna_canny.png", cannyImg.width, cannyImg.height, 1, cannyImg.buffer, cannyImg.width);
+    int cannyResult = stbi_write_png("res/textures/canny.png", cannyImg.width, cannyImg.height, 1, cannyImg.buffer, cannyImg.width);
+    debugFileTextFromImage("res/textures/canny.png", cannyImg.width, cannyImg.height, true);
     std::cout << "Canny creation "<< (cannyResult ? "Succeed!" : "Failed :(") << std::endl;
 
     std::string grayfilepath = "res/textures/Lenna.png";
-    std::string halfnewfilepath = "res/textures/Lenna_halftone.png";
-    std::string graynewfilepath = "res/textures/Lenna_gray.png";
+    std::string halfnewfilepath = "res/textures/halftone.png";
+    std::string graynewfilepath = "res/textures/Grayscale.png";
     int width_gray = grayImg.width;
     int height_gray = grayImg.height;
     int comps_gray = grayImg.channels;
@@ -545,16 +589,17 @@ int main(void)
         // Halftone effect
     std::cout << "Applying Halftone Effect on the gray Scale Image..." << std::endl;
     unsigned char* halfBuffer = halftoneImage(graynewfilepath, 1, &width_gray, &height_gray, &comps_gray);
-    int halfResult = stbi_write_png(halfnewfilepath.c_str(), width_gray * 2, height_gray * 2, 1, halfBuffer, width_gray * 2);
-
+    int halfResult = stbi_write_png(halfnewfilepath.c_str(), width_gray * HALFTONE_SIZE_MULTIPLYER, height_gray * HALFTONE_SIZE_MULTIPLYER, 1, halfBuffer, width_gray * HALFTONE_SIZE_MULTIPLYER);
+    debugFileTextFromImage(halfnewfilepath, width_gray * HALFTONE_SIZE_MULTIPLYER, height_gray * HALFTONE_SIZE_MULTIPLYER, true);
     std::cout << "Halftone "<< (halfResult ? "Success!" : "Failed") << std::endl;
    
 
     // Floyed Steinberg Dithering
     std::cout << "Applying Floyed Steinberg Dithering on the gray Scale Image..." << std::endl;
-    std::string ditherednewfilepath = "res/textures/Lenna_dithered.png";
+    std::string ditherednewfilepath = "res/textures/dithered.png";
     unsigned char* ditheredBuffer = FloyedSteinbergDithering(grayfilepath, 1, &width_gray, &height_gray, &comps_gray);
     int ditheredResult = stbi_write_png(ditherednewfilepath.c_str(), width_gray, height_gray, 1, ditheredBuffer, width_gray);
+    debugFileTextFromImage(ditherednewfilepath, width_gray, height_gray, false);
     std::cout << "Dithering "<< (ditheredResult ? "Success!" : "Failed") << std::endl;
 
 
